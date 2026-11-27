@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  # push only on the long-lived branches, as in lint.yml: merges get tested, PR commits once.
+  push:
+    branches: [main, dev, opensource]
+  pull_request:
+    branches: [main, dev, opensource]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-24.04
+    container:
+      image: golang:1.27.4
+      # Go comes from this image; see lint.yml for why there's no setup-go step.
+    env:
+      # see lint.yml for why: go's VCS-stamping fails inside this container
+      GOFLAGS: -buildvcs=false
+    steps:
+      - name: Install make
+        run: apt-get update && apt-get install -y make
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check go.mod and go.sum are tidy
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go mod tidy && git diff --exit-code go.mod go.sum
+
+      - name: Build
+        run: go build ./...
+
+      - name: Running Tests
+        run: make test GOTEST_FLAGS=-race

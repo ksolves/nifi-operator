@@ -1,0 +1,50 @@
+name: Dependabot notices
+
+# Dependabot can't run `make third-party-notices`, so every Go module bump would leave
+# THIRD_PARTY_NOTICES.txt stale. This regenerates it on the Dependabot branch and commits it.
+on:
+  pull_request:
+    branches: [opensource]
+    paths: [go.mod, go.sum]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  notices:
+    name: Refresh third-party notices
+    if: github.actor == 'dependabot[bot]'
+    runs-on: nifi-operator-runners
+    container:
+      image: golang:1.27.4
+    env:
+      GOFLAGS: -buildvcs=false
+      HEAD_REF: ${{ github.head_ref }}
+    steps:
+      - name: Clone the Dependabot branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          # A token other than GITHUB_TOKEN makes the pushed commit re-run CI; optional.
+          token: ${{ secrets.NOTICES_PUSH_TOKEN || github.token }}
+
+      - name: Regenerate THIRD_PARTY_NOTICES.txt
+        run: |
+          apt-get update && apt-get install -y make
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          make third-party-notices
+
+      - name: Commit if it changed
+        run: |
+          if git diff --quiet -- THIRD_PARTY_NOTICES.txt; then
+            echo "THIRD_PARTY_NOTICES.txt is current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(deps): refresh THIRD_PARTY_NOTICES.txt" -- THIRD_PARTY_NOTICES.txt
+          git push origin "HEAD:$HEAD_REF"

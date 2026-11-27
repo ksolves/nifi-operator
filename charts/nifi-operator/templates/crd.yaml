@@ -1,0 +1,18 @@
+{{- /*
+  CRDs are embedded verbatim from files/crd/ (synced from config/crd/bases by
+  `make helm-sync`); only chart labels + ArgoCD annotations are layered on.
+  helm.sh/resource-policy: keep leaves them in place on `helm uninstall`, and the ArgoCD
+  sync-options Prune=false,Delete=false on an Application prune or delete: deleting a CRD deletes
+  every NiFiCluster.
+*/ -}}
+{{- if .Values.crds.install }}
+{{- range $name := list "nifi.ksolves.com_nificlusters.yaml" "nifi.ksolves.com_nifinodegroups.yaml" }}
+{{- $crd := $.Files.Get (printf "files/crd/%s" $name) | fromYaml }}
+{{- if not $crd.spec }}{{ fail (printf "files/crd/%s missing or unparsable; run make helm-sync" $name) }}{{ end }}
+{{- $md := $crd.metadata }}
+{{- $_ := set $md "labels" (merge (include "nifi-operator.labels" $ | fromYaml) (default dict $md.labels)) }}
+{{- $_ := set $md "annotations" (merge (dict "argocd.argoproj.io/sync-wave" "-1" "argocd.argoproj.io/sync-options" "ServerSideApply=true,Prune=false,Delete=false" "helm.sh/resource-policy" "keep") (default dict $md.annotations)) }}
+---
+{{ toYaml $crd }}
+{{- end }}
+{{- end }}

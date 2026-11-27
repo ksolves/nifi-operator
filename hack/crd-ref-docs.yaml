@@ -1,0 +1,9 @@
+# crd-ref-docs configuration for docs/api-reference.md (`make api-docs`).
+processor:
+  ignoreTypes:
+    - "NiFiClusterList$"
+    - "NiFiNodeGroupList$"
+  ignoreFields:
+    - "TypeMeta$"
+render:
+  kubernetesVersion: "1.33"

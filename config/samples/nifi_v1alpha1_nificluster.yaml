@@ -1,0 +1,13 @@
+apiVersion: nifi.ksolves.com/v1alpha1
+kind: NiFiCluster
+metadata:
+  labels:
+    app.kubernetes.io/name: nifi-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: nificluster-sample
+spec:
+  nodeGroups:
+    - name: default
+      replicas: 3
+      storage: 10Gi
+      logStorage: 5Gi

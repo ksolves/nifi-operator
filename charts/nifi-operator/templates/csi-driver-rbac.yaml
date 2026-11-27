@@ -1,0 +1,41 @@
+{{- if .Values.csiDriver.enabled }}
+# Deliberately separate from the main operator's ServiceAccount/ClusterRole (rbac.yaml), and
+# cluster-scoped - this driver resolves NiFiClusters
+# and their pods in any namespace a NiFiCluster is created in. It holds no Secret access here: the
+# operator grants it `get` on each TLS cluster's CA Secret only, through a per-cluster Role and
+# RoleBinding (<cluster>-csi-ca-reader, see --csi-driver-service-account in deployment.yaml).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-csi-driver-role
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+rules:
+  # nifinodegroups: a node group may be its own NiFiNodeGroup object instead of an inline
+  # spec.nodeGroups entry.
+  - apiGroups: ["nifi.ksolves.com"]
+    resources: ["nificlusters", "nifinodegroups"]
+    verbs: ["get"]
+  # Pod ownership check before issuing a certificate (internal/csidriver/node.go).
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-csi-driver-rolebinding
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "nifi-operator.fullname" . }}-csi-driver-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "nifi-operator.fullname" . }}-csi-driver
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,74 @@
+{{- if and .Values.metrics.enabled .Values.monitoring.serviceMonitor.enabled }}
+{{- $fullname := include "nifi-operator.fullname" . }}
+{{- /*
+Scrapes the operator's metrics endpoint. The endpoint is authenticated and authorised
+by the operator itself (TokenReview + SubjectAccessReview for GET /metrics), so the scraper uses a
+dedicated ServiceAccount token bound to the chart's metrics-reader ClusterRole.
+*/}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}-metrics-scraper
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: {{ $fullname }}-metrics-scraper-token
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/service-account.name: {{ $fullname }}-metrics-scraper
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-metrics-scraper
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-metrics-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-metrics-scraper
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $fullname }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      nifi.ksolves.com/metrics: "true"
+  endpoints:
+    - port: {{ if .Values.metrics.secure }}https{{ else }}http{{ end }}
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+      {{- if .Values.metrics.secure }}
+      scheme: https
+      # The metrics server uses a self-signed certificate unless --metrics-cert-path is set.
+      tlsConfig:
+        insecureSkipVerify: true
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ $fullname }}-metrics-scraper-token
+          key: token
+      {{- else }}
+      scheme: http
+      {{- end }}
+{{- end }}

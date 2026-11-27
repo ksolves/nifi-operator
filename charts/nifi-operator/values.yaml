@@ -1,0 +1,269 @@
+# Two replicas by default: only the elected leader reconciles, every replica serves
+# the admission webhook, so a node drain or a crash never stops NiFiCluster edits. Set 1 for a
+# minimal install; the PodDisruptionBudget below is then not rendered.
+replicaCount: 2
+
+image:
+  repository: ksoperator/nifi-operator
+  # Empty: nifi-operator-manager-<Chart appVersion>.
+  tag: ""
+  # Optional "sha256:..." digest; when set the image is pulled by digest, the tag kept only for readability.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# The NiFi node image for a NiFiCluster without spec.image: the stock Apache NiFi image
+#. The webhook writes it into the cluster's spec when the cluster is created, so a later
+# upgrade doesn't change running clusters' image. Keep the repository in
+# webhook.trustedImageRepositories, or creating such a cluster needs permission to create pods.
+nifiNodeImage:
+  repository: apache/nifi
+  # Empty: 2.12.0, the NiFi version this release is tested with.
+  tag: ""
+
+# Names of Secrets (in the release namespace) used to pull the operator and CSI driver images.
+imagePullSecrets: []
+
+crds:
+  install: true
+
+csiDriver:
+  # Run the driver container privileged. Off by default: it needs no mounts or capabilities,
+  # only root. SELinux-enforcing nodes (OpenShift) need it on to write into kubelet's pod
+  # directories.
+  privileged: false
+  # OpenShift only: the lowest namespace Pod Security level allowed to mount this driver's inline
+  # volumes (security.openshift.io/csi-ephemeral-volume-profile). "restricted" lets TLS NiFi
+  # clusters run in any namespace: a pod gets only its own read-only keystore, and the driver
+  # issues it only to pods owned by a NiFiCluster's StatefulSet. Empty leaves the driver
+  # unlabelled, which OpenShift treats as "privileged". Ignored elsewhere.
+  openshiftEphemeralVolumeProfile: restricted
+  # Deploys the TLS CSI node plugin (mTLS support) as a DaemonSet on every node. Required for
+  # TLS, which is on by default for every new node group: TLS node certificates are delivered
+  # only through this driver, so a tls.enabled node group's pods can't start without it. Runs its
+  # own minimal ServiceAccount/ClusterRole, deliberately separate from the operator's own
+  # broader RBAC. Disable it only if every NiFiCluster sets tls.enabled: false.
+  enabled: true
+  image:
+    repository: ksoperator/nifi-operator
+    # Empty: nifi-operator-csi-driver-<Chart appVersion>.
+    tag: ""
+    # Optional "sha256:..." digest, as for image.digest.
+    digest: ""
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 32Mi
+  nodeDriverRegistrar:
+    # Upstream sidecar, not our own code - pinned by digest rather than left floating. Keep it in
+    # step with config/csi/daemonset.yaml; make release-scan reports its CVEs.
+    image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.18.0@sha256:b7fefd08651f00ac4df1a196ed4c621c2451fbb899297fe9fad9e36c667af0c0
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+  livenessProbe:
+    # Upstream sidecar, pinned like the registrar.
+    image: registry.k8s.io/sig-storage/livenessprobe:v2.20.0@sha256:19f2cf2f40e1987c7943945deca5f65cd4e4bf5cc0657fc78a5df131861578e8
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+  scc:
+    # OpenShift/OKD only. Grants the CSI driver's ServiceAccount the SCC it needs (privileged +
+    # hostPath), via the same RoleBinding->system:openshift:scc:<name> mechanism `oc adm policy
+    # add-scc-to-user` uses under the hood.
+    enabled: true
+    # true: render the binding only when the cluster serves security.openshift.io/v1 (helm
+    # install/upgrade, Argo CD). A plain `helm template` can't see the cluster, so on OpenShift
+    # set false there (or pass --api-versions security.openshift.io/v1).
+    autoDetect: true
+    # `privileged` is confirmed as the built-in SCC that actually sets both
+    # allowPrivilegedContainer=true and allowHostDirVolumePlugin=true together on OKD -
+    # hostmount-anyuid/hostaccess only grant the hostPath half, not privileged (see
+    # docs/csi-driver-platform-notes.md).
+    name: privileged
+
+webhook:
+  # Disabling this also sets ENABLE_WEBHOOKS=false on the manager so the binary skips
+  # registering the webhook server, not just the K8s-side registration objects.
+  enabled: true
+  # How long the API server waits for the webhook before failing the request (1-30). The webhook
+  # only does a few in-cluster reads, so 5s leaves plenty of headroom; the Kubernetes default is 10.
+  timeoutSeconds: 5
+  # NiFi image repositories a NiFiCluster may use without its author being allowed to create pods
+  # in the namespace. The image runs with the cluster's keys and ServiceAccount, so any
+  # other repository counts like a sidecar: the webhook asks a SubjectAccessReview for `create
+  # pods`. An entry ending in "/" trusts every repository under it. Empty: every new repository is
+  # checked. The default: the stock Apache NiFi images. Add the repository of any custom node image
+  # you run.
+  trustedImageRepositories:
+    - apache/nifi
+  certManager:
+    # true: cert-manager issues a CA (self-signed root) and a short-lived serving certificate
+    # signed by it, and injects the CA as caBundle - renewing the serving certificate never
+    # changes the caBundle. false: Helm generates a 10-year CA and a 1-year serving certificate,
+    # keeps both in the webhook Secret and re-issues the serving certificate from the same CA on
+    # any upgrade within 60 days of its expiry. Empty (default): true when the cluster serves
+    # cert-manager.io/v1 at install/upgrade time. Renderers without cluster access (helm template,
+    # Argo CD) cannot reuse the Secret: use cert-manager there.
+    enabled: ""
+    duration: 2160h       # serving certificate: 90 days
+    renewBefore: 720h     # renewed 30 days before expiry
+    caDuration: 87600h    # CA: 10 years
+    caRenewBefore: 8760h
+
+serviceAccount:
+  create: true
+  name: ""
+
+# The Kubernetes cluster's DNS domain. NiFi pod FQDNs, node addresses and certificate SANs are
+# built with it; change it only if your cluster doesn't use the default.
+clusterDomain: cluster.local
+
+
+# Settings the operator applies to the NiFi pods of every NiFiCluster it manages.
+nifiPods:
+  # OpenShift only (ignored elsewhere): SecurityContextConstraints the operator binds each
+  # NiFiCluster's NiFi ServiceAccount to, through OpenShift's built-in
+  # system:openshift:scc:<name> ClusterRole. It must allow the RuntimeDefault seccomp profile, which
+  # anyuid doesn't. Empty (the default): no binding; for the default restricted-v2 SCC also set
+  # fsGroup: "" and runAsUser: "" below. When set, the chart grants the operator "use" on this one
+  # SCC, which binding the NiFi pods to it requires. Rendered from this value alone, not from the
+  # cluster's APIs, so helm template and Argo CD render it too; off OpenShift it has no effect.
+  openshiftSCC: ""
+  # fsGroup of the NiFi pods (--nifi-fs-group). 0, the root group, makes freshly provisioned
+  # volumes writable whatever the storage's own permissions. "" (not null, which keeps 0) sets no
+  # fsGroup, for platforms that assign one themselves and reject a fixed value, such as OpenShift's
+  # default restricted-v2 SCC. The pods keep their files group-writable for group 0, so a later
+  # change of UID or fsGroup keeps working on any storage.
+  fsGroup: 0
+  # UID of the NiFi pods (--nifi-run-as-user), with group 0. Stock apache/nifi images name their
+  # user ("nifi"), so runAsNonRoot needs a numeric UID; 1000 is that user's. "" (not null, which
+  # keeps 1000) sets neither, for platforms that assign the UID themselves, such as OpenShift's
+  # default restricted-v2 SCC. Not 0: the pods never run as root.
+  runAsUser: 1000
+  # Seccomp profile of the NiFi pods (--nifi-seccomp-profile): RuntimeDefault, or "" for none, for
+  # policies that forbid setting one, such as OpenShift's anyuid SCC (use with openshiftSCC: anyuid).
+  seccompProfile: RuntimeDefault
+
+# How often the operator polls each NiFiCluster's NiFi REST API for its status (nodes and their
+# connection state, coordinator, primary node, version) and the ClusterHealthy condition.
+nifiStatusInterval: 20s
+
+# Offload rate (bytes per second) the operator assumes when warning, with an
+# OffloadMayExceedGracePeriod event, that a scale-down step may not offload a node's queued data
+# within its terminationGracePeriodSeconds. Conservative by default (10 MiB/s); raise it to what
+# your cluster's load-balanced connections actually achieve.
+offloadThroughputBytesPerSecond: 10485760
+
+coordination:
+  # Lets a NiFiCluster that sets coordination.bindPodServiceAccounts have the Kubernetes
+  # coordination Role (Leases and ConfigMaps in its namespace) bound to its node groups' own
+  # podOverrides.serviceAccountName ServiceAccounts. Off by default: the operator then never
+  # grants permissions to a ServiceAccount the cluster's author named, and the CoordinationRBACReady
+  # condition tells them which RoleBinding to create instead.
+  allowCustomServiceAccountBinding: false
+
+leaderElection:
+  enabled: true
+  # A crashed leader is replaced after at most leaseDuration; a leader that stops normally
+  # (rolling update, drain) hands over at once. Defaults are controller-runtime's own.
+  leaseDuration: 15s
+  renewDeadline: 10s
+  retryPeriod: 2s
+
+# Keeps at least one operator replica (and so one webhook endpoint) through voluntary
+# disruptions such as node drains. Only rendered with replicaCount > 1.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+metrics:
+  enabled: true
+  secure: true
+
+# Prometheus Operator integration. Needs the monitoring.coreos.com CRDs. The chart ships no alert
+# rules; docs/installation.md#monitoring lists the metrics to write your own PrometheusRule on.
+monitoring:
+  # Extra labels on the ServiceMonitor, e.g. the label your Prometheus selects.
+  labels: {}
+  serviceMonitor:
+    # Scrapes the operator's metrics with its own ServiceAccount token (needs metrics.enabled).
+    enabled: false
+    interval: 30s
+
+# Optional NetworkPolicy for the operator pods: ingress only to the health port (any source, for
+# the kubelet's probes), the webhook port (9443) and the metrics port; everything else is denied. Egress is not restricted
+# (the operator talks to the API server and to the NiFi pods). Needs a network plugin that
+# enforces NetworkPolicies.
+networkPolicy:
+  enabled: false
+  # Who may call the webhook, as NetworkPolicy peers. Empty: any source. The API server usually
+  # connects from the node or control-plane network, which pod and namespace selectors can't
+  # match: restrict this only with ipBlocks you know, or every NiFiCluster change is rejected.
+  webhookFrom: []
+  # Who may scrape the metrics port, as NetworkPolicy peers. Empty: any source. For example
+  # your Prometheus namespace:
+  #   - namespaceSelector:
+  #       matchLabels:
+  #         kubernetes.io/metadata.name: monitoring
+  metricsFrom: []
+
+probes:
+  healthProbeBindAddress: ":8081"
+  livenessPath: /healthz
+  readinessPath: /readyz
+  initialDelaySeconds:
+    liveness: 15
+    readiness: 5
+  periodSeconds:
+    liveness: 20
+    readiness: 10
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  # The manager writes nothing to its filesystem (webhook certs come from a read-only Secret mount).
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+terminationGracePeriodSeconds: 10
+
+# A stopping replica keeps serving for this long before shutting down, so the webhook Service has
+# removed it before its webhook server stops listening - without it a rolling update or drain fails
+# the odd webhook call (seen in testing: 1 of 70). Uses the native preStop sleep action
+# (Kubernetes >= 1.30); set 0 on older clusters. Must stay below terminationGracePeriodSeconds.
+preStopSleepSeconds: 5
+
+nodeSelector: {}
+tolerations: []
+# Empty: the chart spreads its replicas over nodes with a preferred (soft) pod anti-affinity on
+# kubernetes.io/hostname. Set it to replace that default entirely.
+affinity: {}
+# e.g. spread over zones: [{maxSkew: 1, topologyKey: topology.kubernetes.io/zone,
+#   whenUnsatisfiable: ScheduleAnyway}]; the chart adds the labelSelector.
+topologySpreadConstraints: []

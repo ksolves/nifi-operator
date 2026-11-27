@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="03-cluster-namespace-title 03-cluster-namespace-desc" id="d-03-cluster-namespace-root">
+        <title id="03-cluster-namespace-title">Inside a NiFi cluster namespace</title>
+        <desc id="03-cluster-namespace-desc">Deployment diagram of what the nifi-operator creates in one NiFi cluster namespace: users reach two node groups of NiFi 2.12 pods through a client Service and optional Route or HTTPRoute, the pods talk mTLS to each other over the headless Service, and they elect the cluster coordinator and primary node through Kubernetes Leases with ConfigMap state instead of ZooKeeper, reading rendered config and secrets mounted into every pod.</desc>
+        <defs>
+      <style>#d-03-cluster-namespace-root { --color-paper:   #fafaf9;
+      --color-ink:     #212121;
+      --color-muted:   #5c636a;
+      --color-accent:  #c32f3c;
+      --font-sans:     'Manrope', system-ui, sans-serif;
+      --font-title:    'Manrope', system-ui, sans-serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace; }
+      #d-03-cluster-namespace-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #d-03-cluster-namespace-root .diagram-container { width: 100%; overflow-x: auto; }
+      #d-03-cluster-namespace-root .diagram-container { overflow-x: visible; }</style>
+          <marker id="d-03-cluster-namespace-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5c636a"/></marker>
+          <marker id="d-03-cluster-namespace-arrow-both" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto-start-reverse"><polygon points="0 0, 8 3, 0 6" fill="#5c636a"/></marker>
+          <marker id="d-03-cluster-namespace-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#c32f3c"/></marker>
+          <marker id="d-03-cluster-namespace-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4e49e0"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#fafaf9"/>
+
+        <!-- Zones -->
+        <rect x="40" y="40" width="160" height="576" rx="8" fill="#212121" stroke="#212121" stroke-width="0.8" stroke-dasharray="4,4" fill-opacity="0.02" stroke-opacity="0.20"/>
+        <rect x="56" y="34" width="60" height="12" fill="#fafaf9"/>
+        <text x="86" y="43" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">OUTSIDE</text>
+
+        <rect x="232" y="40" width="1008" height="576" rx="8" fill="#212121" stroke="#212121" stroke-width="0.8" stroke-dasharray="4,4" fill-opacity="0.02" stroke-opacity="0.20"/>
+        <rect x="248" y="34" width="140" height="12" fill="#fafaf9"/>
+        <text x="318" y="43" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">NIFICLUSTER NAMESPACE</text>
+
+        <g transform="translate(0,48)">
+        <!-- Network paths (behind nodes) -->
+        <!-- P1 users -> services (cross-zone) -->
+        <line x1="184" y1="176" x2="264" y2="176" stroke="#4e49e0" stroke-width="1.2" marker-end="url(#d-03-cluster-namespace-arrow-link)"/>
+        <!-- P2 client svc -> group A -->
+        <line x1="488" y1="200" x2="560" y2="200" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-03-cluster-namespace-arrow)"/>
+        <!-- P3 client svc -> group B -->
+        <path d="M 488,216 H 516 Q 524,216 524,224 V 424 Q 524,432 532,432 H 560" fill="none" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-03-cluster-namespace-arrow)"/>
+        <!-- P4 group A <-> group B, cluster protocol over headless DNS -->
+        <line x1="720" y1="280" x2="720" y2="360" stroke="#5c636a" stroke-width="1.2" marker-start="url(#d-03-cluster-namespace-arrow-both)" marker-end="url(#d-03-cluster-namespace-arrow-both)"/>
+        <!-- P5 group A -> Lease coordination -->
+        <line x1="880" y1="136" x2="952" y2="136" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-03-cluster-namespace-arrow)"/>
+        <!-- P6 group B -> Lease coordination -->
+        <path d="M 880,392 H 908 Q 916,392 916,384 V 256 Q 916,248 924,248 H 952" fill="none" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-03-cluster-namespace-arrow)"/>
+
+        <!-- Path labels -->
+        <rect x="206" y="156" width="36" height="12" rx="2" fill="#fafaf9"/>
+        <text x="224" y="165" fill="#4e49e0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HTTPS</text>
+
+        <rect x="492" y="180" width="64" height="12" rx="2" fill="#fafaf9"/>
+        <text x="524" y="189" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HTTPS:8443</text>
+
+        <rect x="452" y="336" width="64" height="12" rx="2" fill="#fafaf9"/>
+        <text x="484" y="345" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HTTPS:8443</text>
+
+        <rect x="728" y="314" width="68" height="12" rx="2" fill="#fafaf9"/>
+        <text x="762" y="323" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">MTLS:11443</text>
+
+        <rect x="884" y="116" width="64" height="12" rx="2" fill="#fafaf9"/>
+        <text x="916" y="125" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ELECT/RENEW</text>
+
+        <rect x="844" y="314" width="64" height="12" rx="2" fill="#fafaf9"/>
+        <text x="876" y="323" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ELECT/RENEW</text>
+
+        <!-- Node: Users (external) -->
+        <rect x="56" y="144" width="128" height="64" rx="6" fill="#fafaf9"/>
+        <rect x="56" y="144" width="128" height="64" rx="6" fill="#212121" stroke="#212121" stroke-width="1" fill-opacity="0.03" stroke-opacity="0.30"/>
+        <rect x="64" y="152" width="28" height="12" rx="2" fill="none" stroke="#212121" stroke-width="0.8" stroke-opacity="0.25"/>
+        <text x="78" y="161" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+        <text x="120" y="184" fill="#212121" font-size="12" font-weight="600" font-family="'Manrope', system-ui, sans-serif" text-anchor="middle">Users</text>
+        <text x="120" y="199" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">UI · REST · ingest</text>
+
+        <!-- Node: Services & exposure -->
+        <rect x="264" y="96" width="224" height="172" rx="6" fill="#fafaf9"/>
+        <rect x="264" y="96" width="224" height="172" rx="6" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+        <rect x="272" y="104" width="28" height="12" rx="2" fill="none" stroke="#212121" stroke-width="0.8" stroke-opacity="0.40"/>
+        <text x="286" y="113" fill="#212121" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">SVC</text>
+        <text x="280" y="136" fill="#212121" font-size="12" font-weight="600" font-family="'Manrope', system-ui, sans-serif">Services &amp; exposure</text>
+        <text x="280" y="152" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">one set per cluster</text>
+        <rect x="280" y="164" width="192" height="24" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="288" y="180" fill="#212121" font-size="12" font-family="'Manrope', system-ui, sans-serif">Route / HTTPRoute</text>
+        <text x="464" y="180" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">optional</text>
+        <rect x="280" y="196" width="192" height="24" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="288" y="212" fill="#212121" font-size="12" font-family="'Manrope', system-ui, sans-serif">client Service</text>
+        <text x="464" y="212" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">ClusterIP|LB</text>
+        <rect x="280" y="228" width="192" height="24" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="288" y="244" fill="#212121" font-size="12" font-family="'Manrope', system-ui, sans-serif">headless Service</text>
+        <text x="464" y="244" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">peer DNS</text>
+
+        <!-- Node: Node group A (StatefulSet x3) -->
+        <rect x="560" y="96" width="320" height="184" rx="6" fill="#fafaf9"/>
+        <rect x="560" y="96" width="320" height="184" rx="6" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+        <rect x="568" y="104" width="72" height="12" rx="2" fill="none" stroke="#212121" stroke-width="0.8" stroke-opacity="0.40"/>
+        <text x="604" y="113" fill="#212121" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">STATEFULSET</text>
+        <rect x="844" y="104" width="28" height="12" rx="2" fill="none" stroke="#212121" stroke-width="0.8" stroke-opacity="0.40"/>
+        <text x="858" y="113" fill="#212121" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">x3</text>
+        <text x="576" y="136" fill="#212121" font-size="12" font-weight="600" font-family="'Manrope', system-ui, sans-serif">Node group A</text>
+        <text x="576" y="152" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">spec.nodeGroups[] · PDB · anti-affinity</text>
+        <rect x="576" y="164" width="288" height="24" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="584" y="180" fill="#212121" font-size="12" font-family="'Manrope', system-ui, sans-serif">NiFi container</text>
+        <text x="856" y="180" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">2.12.0</text>
+        <text x="576" y="208" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">PER-POD VOLUMES</text>
+        <rect x="576" y="216" width="136" height="20" rx="4" fill="#ffffff" stroke="#5c636a" stroke-width="0.8" stroke-dasharray="4,3"/>
+        <text x="644" y="229" fill="#212121" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">CSI TLS · mTLS cert</text>
+        <text x="724" y="229" fill="#67707a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">minted per pod</text>
+        <rect x="576" y="244" width="64" height="20" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="608" y="257" fill="#212121" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">flowfile</text>
+        <rect x="648" y="244" width="56" height="20" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="676" y="257" fill="#212121" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">content</text>
+        <rect x="712" y="244" width="72" height="20" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="748" y="257" fill="#212121" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">provenance</text>
+        <rect x="792" y="244" width="72" height="20" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="828" y="257" fill="#212121" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">database</text>
+
+        <!-- Node: Node group B (NiFiNodeGroup x2) -->
+        <rect x="560" y="360" width="320" height="144" rx="6" fill="#fafaf9"/>
+        <rect x="560" y="360" width="320" height="144" rx="6" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+        <rect x="568" y="368" width="80" height="12" rx="2" fill="none" stroke="#212121" stroke-width="0.8" stroke-opacity="0.40"/>
+        <text x="608" y="377" fill="#212121" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">NIFINODEGROUP</text>
+        <rect x="844" y="368" width="28" height="12" rx="2" fill="none" stroke="#212121" stroke-width="0.8" stroke-opacity="0.40"/>
+        <text x="858" y="377" fill="#212121" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">x2</text>
+        <text x="576" y="400" fill="#212121" font-size="12" font-weight="600" font-family="'Manrope', system-ui, sans-serif">Node group B</text>
+        <text x="576" y="416" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">/scale ← HPA · KEDA · PDB</text>
+        <rect x="576" y="428" width="288" height="24" rx="4" fill="#212121" stroke="#5c636a" stroke-width="0.8" fill-opacity="0.05"/>
+        <text x="584" y="444" fill="#212121" font-size="12" font-family="'Manrope', system-ui, sans-serif">NiFi container</text>
+        <text x="856" y="444" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">2.12.0</text>
+        <text x="576" y="476" fill="#67707a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">same pod spec: CSI TLS + 4 repo PVCs</text>
+
+        <!-- Node: Lease coordination (focal) -->
+        <rect x="952" y="96" width="256" height="192" rx="6" fill="#fafaf9"/>
+        <rect x="952" y="96" width="256" height="192" rx="6" fill="#c32f3c" stroke="#c32f3c" stroke-width="1.2" fill-opacity="0.08"/>
+        <rect x="960" y="104" width="48" height="12" rx="2" fill="none" stroke="#c32f3c" stroke-width="0.8" stroke-opacity="0.50"/>
+        <text x="984" y="113" fill="#c32f3c" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">K8S API</text>
+        <text x="968" y="136" fill="#212121" font-size="12" font-weight="600" font-family="'Manrope', system-ui, sans-serif">Lease coordination</text>
+        <text x="968" y="152" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">no ZooKeeper · failover ~15 s</text>
+        <rect x="968" y="164" width="224" height="24" rx="4" fill="#ffffff" stroke="#5c636a" stroke-width="0.8"/>
+        <text x="976" y="180" fill="#212121" font-size="12" font-family="'Manrope', system-ui, sans-serif">Cluster coordinator</text>
+        <text x="1184" y="180" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">Lease</text>
+        <rect x="968" y="196" width="224" height="24" rx="4" fill="#ffffff" stroke="#5c636a" stroke-width="0.8"/>
+        <text x="976" y="212" fill="#212121" font-size="12" font-family="'Manrope', system-ui, sans-serif">Primary node</text>
+        <text x="1184" y="212" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">Lease</text>
+        <rect x="968" y="228" width="224" height="24" rx="4" fill="#ffffff" stroke="#5c636a" stroke-width="0.8"/>
+        <text x="976" y="244" fill="#212121" font-size="12" font-family="'Manrope', system-ui, sans-serif">Cluster state</text>
+        <text x="1184" y="244" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">ConfigMap</text>
+        <text x="968" y="272" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">access: SA + Role + RoleBinding</text>
+
+        <!-- Node: Config & Secrets (store) -->
+        <rect x="952" y="336" width="256" height="168" rx="6" fill="#fafaf9"/>
+        <rect x="952" y="336" width="256" height="168" rx="6" fill="#212121" stroke="#5c636a" stroke-width="1" fill-opacity="0.05"/>
+        <rect x="960" y="344" width="44" height="12" rx="2" fill="none" stroke="#5c636a" stroke-width="0.8" stroke-opacity="0.50"/>
+        <text x="982" y="353" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">CONFIG</text>
+        <text x="968" y="376" fill="#212121" font-size="12" font-weight="600" font-family="'Manrope', system-ui, sans-serif">Config &amp; Secrets</text>
+        <text x="968" y="392" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">mounted into every NiFi pod</text>
+        <line x1="968" y1="404" x2="1192" y2="404" stroke="#212121" stroke-width="0.8" stroke-opacity="0.12"/>
+        <text x="968" y="420" fill="#212121" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">ConfigMap · rendered nifi.properties</text>
+        <text x="968" y="436" fill="#67707a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">config hash → rolling restart</text>
+        <line x1="968" y1="448" x2="1192" y2="448" stroke="#212121" stroke-width="0.8" stroke-opacity="0.12"/>
+        <text x="968" y="464" fill="#212121" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">Secret · login hash</text>
+        <text x="968" y="480" fill="#212121" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">Secret · sensitive-props key</text>
+
+        </g>
+
+        <!-- Legend strip -->
+        <line x1="40" y1="640" x2="1240" y2="640" stroke="#212121" stroke-width="0.8" stroke-opacity="0.10"/>
+        <text x="40" y="660" fill="#5c636a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="40" y="676" width="14" height="10" rx="2" fill="#c32f3c" stroke="#c32f3c" stroke-width="1" fill-opacity="0.08"/>
+        <text x="60" y="684" fill="#5c636a" font-size="8.5" font-family="'Manrope', system-ui, sans-serif">Focal: Lease coordination</text>
+
+        <rect x="200" y="676" width="14" height="10" rx="2" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+        <text x="220" y="684" fill="#5c636a" font-size="8.5" font-family="'Manrope', system-ui, sans-serif">Workload / Service</text>
+
+        <rect x="340" y="676" width="14" height="10" rx="2" fill="#212121" stroke="#5c636a" stroke-width="1" fill-opacity="0.05"/>
+        <text x="360" y="684" fill="#5c636a" font-size="8.5" font-family="'Manrope', system-ui, sans-serif">Config object / PVC</text>
+
+        <rect x="480" y="676" width="14" height="10" rx="2" fill="#ffffff" stroke="#5c636a" stroke-width="0.8" stroke-dasharray="4,3"/>
+        <text x="500" y="684" fill="#5c636a" font-size="8.5" font-family="'Manrope', system-ui, sans-serif">CSI volume</text>
+
+        <rect x="580" y="676" width="14" height="10" rx="2" fill="#212121" stroke="#212121" stroke-width="1" fill-opacity="0.03" stroke-opacity="0.30"/>
+        <text x="600" y="684" fill="#5c636a" font-size="8.5" font-family="'Manrope', system-ui, sans-serif">External</text>
+
+        <line x1="672" y1="681" x2="700" y2="681" stroke="#4e49e0" stroke-width="1.2" marker-end="url(#d-03-cluster-namespace-arrow-link)"/>
+        <text x="708" y="684" fill="#5c636a" font-size="8.5" font-family="'Manrope', system-ui, sans-serif">Into the namespace</text>
+
+        <line x1="820" y1="681" x2="848" y2="681" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-03-cluster-namespace-arrow)"/>
+        <text x="856" y="684" fill="#5c636a" font-size="8.5" font-family="'Manrope', system-ui, sans-serif">In-namespace path</text>
+
+        <text x="1240" y="684" fill="#67707a" font-size="8.5" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">xN = pod replicas · alt backend: external ZooKeeper</text>
+      </svg>

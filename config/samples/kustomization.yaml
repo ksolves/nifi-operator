@@ -1,0 +1,10 @@
+# NiFiCluster samples. nifi-auth-secret.yaml needs its login Secret created first, and
+# nifi-full-customization.yaml its prerequisites (see the file header). nifi-local-storage.yaml
+# needs a local-disk StorageClass, so it is not listed; apply it separately.
+resources:
+- nifi_v1alpha1_nificluster.yaml
+- nifi-test-cluster.yaml
+- nifi-auth-default.yaml
+- nifi-auth-literal.yaml
+- nifi-auth-secret.yaml
+- nifi-full-customization.yaml

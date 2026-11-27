@@ -1,0 +1,32 @@
+{{- /* rules synced verbatim from config/rbac/role.yaml via `make helm-sync` */ -}}
+{{- $rules := (.Files.Get "files/rbac/role.yaml" | fromYaml).rules -}}
+{{- if not $rules }}{{ fail "files/rbac/role.yaml missing or has no rules; run make helm-sync" }}{{ end -}}
+{{- /* Binding the NiFi pods to an SCC (--nifi-scc, see deployment.yaml) needs "use" on that SCC:
+granted for the configured SCC only, on the same gate as the flag. Not gated on the cluster's
+APIs, which a plain helm template cannot see; the rule is inert off OpenShift. */ -}}
+{{- if .Values.nifiPods.openshiftSCC -}}
+{{- $rules = append $rules (dict "apiGroups" (list "security.openshift.io") "resources" (list "securitycontextconstraints") "resourceNames" (list (toString .Values.nifiPods.openshiftSCC)) "verbs" (list "use")) -}}
+{{- end -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-manager-role
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+rules:
+  {{- toYaml $rules | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-manager-rolebinding
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "nifi-operator.fullname" . }}-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "nifi-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

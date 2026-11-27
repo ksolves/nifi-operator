@@ -1,0 +1,56 @@
+# Not used by the operator itself. Provided so a cluster admin can delegate
+# NiFiCluster access to end users via ClusterRoleAggregation or direct binding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-nificluster-admin-role
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+rules:
+  # Explicit verbs, not "*", so a verb added to the API later isn't granted silently.
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nificlusters, nifinodegroups]
+    verbs: [create, delete, deletecollection, get, list, patch, update, watch]
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nificlusters/status, nifinodegroups/status]
+    verbs: [get]
+  # kubectl scale nifinodegroup/<name>, HorizontalPodAutoscaler
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nifinodegroups/scale]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-nificluster-editor-role
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nificlusters, nifinodegroups]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nificlusters/status, nifinodegroups/status]
+    verbs: [get]
+  # kubectl scale nifinodegroup/<name>, HorizontalPodAutoscaler
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nifinodegroups/scale]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-nificluster-viewer-role
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nificlusters, nifinodegroups]
+    verbs: [get, list, watch]
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nificlusters/status, nifinodegroups/status]
+    verbs: [get]
+  # kubectl scale nifinodegroup/<name>, HorizontalPodAutoscaler
+  - apiGroups: [nifi.ksolves.com]
+    resources: [nifinodegroups/scale]
+    verbs: [get]

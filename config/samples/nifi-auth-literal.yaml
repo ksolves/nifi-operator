@@ -1,0 +1,29 @@
+# NiFi login set directly in the CR - for test/dev clusters only.
+# The password is stored in plain text in this object (and in etcd). The operator copies it into
+# its own Secret "<cluster>-auth-credentials"; editing it here rolls the pods onto the new login.
+# NiFi requires the password to be at least 12 characters (enforced by the webhook and CRD).
+apiVersion: nifi.ksolves.com/v1alpha1
+kind: NiFiCluster
+metadata:
+  name: nifi-auth-literal
+  namespace: nifi-operator
+spec:
+  image:
+    # The stock Apache NiFi image. For a byte-exact pin, append @sha256:<digest> to the tag
+    # (docs/installation.md).
+    repository: apache/nifi
+    tag: 2.12.0
+  # Private registry? Add its pull Secret:
+  # imagePullSecrets:
+  #   - name: <pull-secret>
+  authentication:
+    singleUser:
+      username: admin
+      password: change-me-test-only
+  nodeGroups:
+    - name: default
+      replicas: 1
+      storage: 1Gi
+      storageClassName: standard
+      tls:
+        enabled: true

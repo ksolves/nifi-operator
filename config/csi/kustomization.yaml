@@ -1,0 +1,4 @@
+resources:
+  - csidriver.yaml
+  - rbac.yaml
+  - daemonset.yaml

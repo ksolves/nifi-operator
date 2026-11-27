@@ -1,0 +1,35 @@
+{{- /* autoDetect is absent after --reuse-values from a pre-release chart: treat that as true */}}
+{{- /* Compared as a string, so --set-string autoDetect=false counts as false too */}}
+{{- $forced := and (hasKey .Values.csiDriver.scc "autoDetect") (eq (toString .Values.csiDriver.scc.autoDetect) "false") }}
+{{- $openshift := or $forced (.Capabilities.APIVersions.Has "security.openshift.io/v1") }}
+{{- if and .Values.csiDriver.enabled .Values.csiDriver.scc.enabled $openshift }}
+# Grants this driver's ServiceAccount the SCC it needs to run (privileged container +
+# hostPath volumes) on OpenShift/OKD. With scc.autoDetect (the default) it renders only when
+# the cluster serves security.openshift.io/v1, which a plain `helm template` without
+# --api-versions can't see; set scc.autoDetect=false to render it regardless. See
+# docs/csi-driver-platform-notes.md for why `privileged` is the default and why vanilla
+# Kubernetes distributions need no equivalent (Pod Security Admission is opt-in per namespace
+# there, not mandatory like OpenShift's SCC admission).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  # roleRef is immutable, so the object's name deliberately embeds csiDriver.scc.name instead
+  # of using a fixed name - changing the value then creates a brand-new RoleBinding rather than
+  # trying to mutate an immutable field on the old one. A GitOps tool that prunes resources no
+  # longer in the manifest (e.g. ArgoCD with automated pruning) then cleans up the old one as a
+  # plain add+prune, which is the reliable way to handle an immutable field that way; a fixed
+  # name plus a "replace on conflict" sync option does not work, because replace still issues a
+  # PUT against the existing object and hits the same immutable-field rejection a patch would.
+  name: {{ include "nifi-operator.fullname" . }}-csi-driver-scc-{{ .Values.csiDriver.scc.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:{{ .Values.csiDriver.scc.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "nifi-operator.fullname" . }}-csi-driver
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,9 @@
+nifi-operator installed into namespace {{ .Release.Namespace }}.
+
+Check the controller is running:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "nifi-operator.name" . }}
+
+Watch scope: cluster-wide (all namespaces).
+
+Next: define a NiFiCluster resource. See:
+  kubectl explain nificlusters.nifi.ksolves.com.spec

@@ -1,0 +1,26 @@
+# A small secure NiFi cluster for a laptop (kind): docs/getting-started/kind.md, step 3. Copy it to
+# my-nifi.yaml, edit, and `kubectl apply -f my-nifi.yaml` to try changes.
+# Every field: docs/crd-reference.md.
+apiVersion: nifi.ksolves.com/v1alpha1
+kind: NiFiCluster
+metadata:
+  name: nifi
+  namespace: nifi
+spec:
+  # The browser reaches NiFi on localhost through docs/getting-started/nifi-ui-service.yaml.
+  proxyHosts:
+    - localhost:8443               # the address the browser uses; NiFi rejects any other
+  nodeGroups:
+    - name: default
+      replicas: 1                  # NiFi nodes; try 2 (needs about 2 GiB more)
+      storage: 5Gi                 # repositories (flowfile, content, provenance)
+      logStorage: 1Gi
+      tls:
+        enabled: true              # HTTPS + login; certificates issued and rotated by the operator
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1536Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi

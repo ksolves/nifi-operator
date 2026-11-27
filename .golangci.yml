@@ -1,0 +1,77 @@
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - copyloopvar
+    - dupl
+    - errcheck
+    - errorlint
+    - ginkgolinter
+    - goconst
+    - gocyclo
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    nolintlint:
+      # Every suppression names its linter, so a stale one is reported once the finding is gone.
+      require-specific: true
+    goconst:
+      # NiFi property maps repeat literal "true"/"false" values; constants for those add nothing.
+      ignore-string-values:
+        - "^(true|false)$"
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+  exclusions:
+    generated: lax
+    rules:
+      # Tests and the e2e harness run commands, write temp files and dial test servers on purpose.
+      - linters:
+          - gosec
+          - noctx
+        path: (_test\.go$|^test/)
+      # NiFi property names such as nifi.security.keystorePasswd, not credentials.
+      - linters:
+          - gosec
+        text: "G101:"
+        path: internal/controller/configmap\.go
+      - linters:
+          - goconst
+        path: _test\.go$
+      - linters:
+          - lll
+        path: api/*
+      - linters:
+          - dupl
+          - lll
+        path: internal/*
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

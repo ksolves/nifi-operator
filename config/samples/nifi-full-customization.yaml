@@ -1,0 +1,112 @@
+# Full-customization NiFiCluster sample — every field the operator's CRD exposes.
+# Schema: api/v1alpha1/nificluster_types.go · Webhook: internal/webhook/v1alpha1/nificluster_webhook.go
+#
+# Before applying:
+#   - Namespace, StorageClass and pull Secret referenced below must already exist.
+#   - Node image must be NiFi >= 2.11 (Kubernetes coordination; see docs/cluster-coordination.md).
+#   - Use the full resource name in kubectl/oc (short name "nificluster" is shared with nifikop/Stackable):
+#       oc apply --dry-run=server -f nifi-full-customization.yaml
+#       oc get nificluster.nifi.ksolves.com -n nifi-demo
+---
+# Single-user login credentials, referenced by spec.authentication.singleUser.secretName.
+# Keys must be exactly "username" and "password"; password >= 12 chars (webhook-enforced).
+# Changing either key triggers a rolling restart of the cluster.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nifi-full-admin-auth
+  namespace: nifi-demo
+type: Opaque
+stringData:
+  username: admin
+  password: CHANGE-ME-min-12-chars
+---
+apiVersion: nifi.ksolves.com/v1alpha1
+kind: NiFiCluster
+metadata:
+  name: nifi-full
+  namespace: nifi-demo
+spec:
+  # ── Image (optional) ────────────────────────────────────────────────
+  # Leave it out for the operator's default, apache/nifi:2.12.0 (the stock Apache NiFi image).
+  # Set both repository and tag to pin one: NiFi 2.11.0 or later.
+  image:
+    repository: apache/nifi   # without tag
+    tag: 2.12.0
+
+  # Pull secrets for a private registry (same namespace). Added to every NiFi pod.
+  # imagePullSecrets:
+  #   - name: <pull-secret>
+
+  # ServiceAccount the NiFi pods run as. Unset (recommended): the operator creates <name>-nifi,
+  # binds the coordination Role and, on OpenShift, the SCC. A name set here gets the coordination
+  # Role but never an SCC - grant that yourself.
+  # serviceAccountName: nifi
+
+  # ── Cluster coordination ────────────────────────────────────────────
+  # One NiFi cluster across all node groups. Kubernetes (default, only value today): Leases for
+  # leader election, ConfigMaps for cluster state. Immutable once set.
+  coordination:
+    backend: Kubernetes
+
+  # ── Cluster-wide metadata ───────────────────────────────────────────
+  # Propagated to every generated object. Node-group values win on key clash.
+  labels:
+    team: data-platform
+    env: staging
+  annotations:
+    team: data-platform
+
+  # ── Exposure ────────────────────────────────────────────────────────
+  # Type of the cluster Service <name> (all node groups). Enum: ClusterIP (default) | LoadBalancer (needs TLS).
+  # Port follows TLS state: 8443 "https" when tls.enabled, else 8080 "http". See docs/exposure.md.
+  serviceType: ClusterIP
+
+  # Extra Host headers NiFi accepts (nifi.web.proxy.host). hostname or hostname:port.
+  # Every hostname clients use through your own Ingress, Gateway API HTTPRoute, OpenShift Route
+  # or port-forward. With TLS every entry also goes on the node certificates.
+  proxyHosts:
+    - nifi-internal.example.com
+    - localhost:8443
+
+  # ── Authentication (cluster-scoped) ─────────────────────────────────
+  # Exactly ONE of secretName OR username+password. If the whole block is omitted, NiFi's own
+  # random single-user credentials apply (printed in nifi-app.log).
+  # Literal mode: operator copies the creds into its own Secret for the pods.
+  authentication:
+    singleUser:
+      secretName: nifi-full-admin-auth
+      # Literal alternative (plain text in the CR; password >= 12 chars) — use instead of secretName:
+      # username: admin
+      # password: CHANGE-ME-min-12-chars
+
+  # ── Node group (required, exactly one) ──────────────────────────────
+  # One node group (the Community edition allows one) = one StatefulSet + its Services/ConfigMap/PDB. Name: 1-30 chars, DNS label.
+  # Renaming the group deletes its StatefulSet; PVCs are RETAINED (data orphaned, not reused).
+  nodeGroups:
+    # Group with every field set.
+    - name: primary
+      replicas: 2                     # 1-3, default 3; at most 3 nodes in the cluster. Scaling does not restart the other nodes.
+      storage: 20Gi                   # required — repositories PVC (flowfile/content/provenance/database)
+      logStorage: 5Gi                 # default 5Gi — logs PVC
+      storageClassName: standard      # NFS/CIFS/SMB provisioners are rejected by the webhook
+      resources:                      # webhook default if unset: req 500m/1Gi, lim 2/2Gi
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+      podDisruptionBudget:
+        enabled: true                 # default true
+        minAvailable: 1               # 0 <= n < replicas; default replicas-1
+      terminationGracePeriodSeconds: 180   # default 120; time for preStop decommission/offload
+      labels:                         # merged over spec.labels (group wins)
+        tier: primary
+      annotations:                    # merged over spec.annotations (group wins)
+        prometheus.io/scrape: "true"
+      tls:
+        enabled: true                 # mTLS for REST API + cluster protocol; operator CA + CSI-minted leaf certs
+        extraSANs:                    # extra DNS names on leaf certs; proxyHosts are added automatically
+          - nifi.legacy-alias.example.com
+        certificateValidityDays: 365  # 1-3650, default 365. Pods rotate at ~50% of validity (one at a time, Ready-gated).

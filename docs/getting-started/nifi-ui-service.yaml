@@ -1,0 +1,22 @@
+# kind only: lets the browser reach NiFi on https://localhost:8443.
+#
+# NiFi answers only on its own pod address, so `kubectl port-forward` does not work with it. This
+# Service opens NodePort 30443 to the NiFi pods; hack/try/kind.sh mapped that port to localhost:8443
+# when it created the cluster. On a real cluster you use a LoadBalancer, or your own Ingress,
+# HTTPRoute or OpenShift Route instead (see docs/exposure.md).
+apiVersion: v1
+kind: Service
+metadata:
+  name: nifi-ui
+  namespace: nifi
+spec:
+  type: NodePort
+  selector:                     # the NiFi pods of the NiFiCluster named "nifi"
+    app.kubernetes.io/instance: nifi
+    app.kubernetes.io/name: nifi
+  sessionAffinity: ClientIP     # keeps a browser on one NiFi node, or logins fail now and then
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443
+      nodePort: 30443

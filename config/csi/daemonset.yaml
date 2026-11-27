@@ -1,0 +1,158 @@
+# Deploys the TLS CSI node plugin on every node - it must run wherever a
+# NiFi pod might be scheduled, unlike the operator's own manager, which runs as a single
+# Deployment. Uses only upstream Kubernetes DaemonSet/hostPath/securityContext fields - nothing
+# OKD- or distro-specific (see docs/csi-driver-platform-notes.md for what a specific platform's
+# admission policy needs to additionally grant to let a privileged, hostPath-mounting DaemonSet
+# like this one actually run there).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nifi-operator-csi-driver
+  namespace: system
+  labels:
+    app.kubernetes.io/name: nifi-operator-csi-driver
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nifi-operator-csi-driver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nifi-operator-csi-driver
+    spec:
+      serviceAccountName: nifi-operator-csi-driver
+      containers:
+        - name: csi-driver
+          image: ksoperator/nifi-operator:nifi-operator-csi-driver-1.0.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --csi-endpoint=unix:///csi/csi.sock
+          env:
+            - name: KUBERNETES_SERVICE_HOST
+              value: kubernetes.default.svc
+            # Reported by NodeGetInfo (internal/csidriver/node.go) as this plugin instance's CSI
+            # NodeID - deliberately NOT the container's own hostname (which is the pod's name,
+            # not the node's).
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            # The driver only creates its socket and writes certificate files into kubelet-owned
+            # directories (no mount syscalls), so it runs as root but unprivileged. On
+            # SELinux-enforcing nodes (OpenShift) replace this block with `privileged: true`.
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+            # Writes only into its hostPath/volume mounts (/csi, the kubelet pods dir).
+            readOnlyRootFilesystem: true
+          ports:
+            # Served by the livenessprobe sidecar (same pod network namespace), declared here
+            # because the probe below restarts this container, not the sidecar.
+            - name: healthz
+              containerPort: 9808
+          # The sidecar answers /healthz by calling this driver's CSI Probe RPC over the socket,
+          # so a hung or dead gRPC server gets the container restarted instead of silently
+          # failing every NiFi pod's volume mount on this node.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: HostToContainer
+        - name: node-driver-registrar
+          # Upstream sidecar, not our own code - registers this driver's socket with kubelet so
+          # NodePublishVolume actually gets called. Version pinned deliberately (see the
+          # deferred, still-open code-review finding on mutable/unpinned image tags elsewhere in
+          # this project) rather than left floating.
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.18.0@sha256:b7fefd08651f00ac4df1a196ed4c621c2451fbb899297fe9fad9e36c667af0c0
+          args:
+            - --csi-address=/csi/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/tls.nifi.ksolves.com/csi.sock
+            - --http-endpoint=:9809
+          securityContext:
+            # Only dials the driver's socket and writes its own registration socket as root into
+            # root-owned hostPath dirs, so it needs neither privilege nor a writable root fs.
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+          ports:
+            - name: registrar-hz
+              containerPort: 9809
+              protocol: TCP
+          # The registrar re-registers with kubelet when restarted; /healthz fails when
+          # registration was lost.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: registrar-hz
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+        - name: liveness-probe
+          # Upstream sidecar: turns the CSI Probe RPC into the HTTP endpoint kubelet can probe.
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.20.0@sha256:19f2cf2f40e1987c7943945deca5f65cd4e4bf5cc0657fc78a5df131861578e8
+          args:
+            - --csi-address=/csi/csi.sock
+            - --health-port=9808
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            limits:
+              cpu: 100m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+      volumes:
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/tls.nifi.ksolves.com
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory

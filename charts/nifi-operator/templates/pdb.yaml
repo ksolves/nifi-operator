@@ -1,0 +1,18 @@
+{{- /* `helm upgrade --reuse-values` from a chart without podDisruptionBudget leaves it unset: default on */}}
+{{- $pdb := .Values.podDisruptionBudget | default dict }}
+{{- if and (ne (toString $pdb.enabled) "false") (gt (int .Values.replicaCount) 1) }}
+# Keeps at least minAvailable operator replicas through voluntary disruptions (node drains), so the
+# admission webhook - failurePolicy Fail - always has an endpoint.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ $pdb.minAvailable | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "nifi-operator.selectorLabels" . | nindent 6 }}
+{{- end }}

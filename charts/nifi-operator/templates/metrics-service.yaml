@@ -1,0 +1,26 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-controller-manager-metrics-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+    nifi.ksolves.com/metrics: "true"
+spec:
+  ports:
+    # Follows the manager's --metrics-bind-address: 8443 with metrics.secure, plain 8080 without.
+    {{- if .Values.metrics.secure }}
+    - name: https
+      port: 8443
+      protocol: TCP
+      targetPort: 8443
+    {{- else }}
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    {{- end }}
+  selector:
+    {{- include "nifi-operator.selectorLabels" . | nindent 4 }}
+{{- end }}

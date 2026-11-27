@@ -1,0 +1,179 @@
+{{- /* removed values fail only when set to something other than the pre-release default, so --reuse-values upgrades work */}}
+{{- $rbac := .Values.rbac | default dict }}
+{{- if or (and (hasKey $rbac "clusterWide") (not $rbac.clusterWide)) .Values.watchNamespace }}
+{{- fail "rbac.clusterWide=false and watchNamespace were removed: the operator always watches every namespace. Remove them from your values (docs/installation.md)" }}
+{{- end }}
+{{- $rule := (.Values.monitoring | default dict).prometheusRule | default dict }}
+{{- if $rule.enabled }}
+{{- fail "monitoring.prometheusRule was removed: the chart no longer ships alert rules. Remove it from your values and keep a PrometheusRule of your own (docs/installation.md#monitoring)" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nifi-operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        {{- include "nifi-operator.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ include "nifi-operator.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      containers:
+        - name: manager
+          image: {{ include "nifi-operator.image" (dict "image" .Values.image "defaultTagPrefix" "nifi-operator-manager" "root" .) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /manager
+          args:
+            {{- if .Values.metrics.enabled }}
+            - --metrics-bind-address={{ if .Values.metrics.secure }}:8443{{ else }}:8080{{ end }}
+            - --metrics-secure={{ .Values.metrics.secure }}
+            {{- end }}
+            {{- if .Values.leaderElection.enabled }}
+            - --leader-elect
+            {{- /* defaults repeated here: `helm upgrade --reuse-values` from a chart without these keys leaves them unset */}}
+            - --leader-election-lease-duration={{ .Values.leaderElection.leaseDuration | default "15s" }}
+            - --leader-election-renew-deadline={{ .Values.leaderElection.renewDeadline | default "10s" }}
+            - --leader-election-retry-period={{ .Values.leaderElection.retryPeriod | default "2s" }}
+            {{- end }}
+            - --health-probe-bind-address={{ .Values.probes.healthProbeBindAddress }}
+            - --nifi-status-interval={{ .Values.nifiStatusInterval | default "20s" }}
+            - --offload-throughput-bytes-per-second={{ .Values.offloadThroughputBytesPerSecond | default 10485760 | int64 }}
+            {{- if (.Values.coordination).allowCustomServiceAccountBinding }}
+            - --allow-custom-service-account-binding
+            {{- end }}
+            - --cluster-domain={{ .Values.clusterDomain }}
+            {{- /* absent (helm upgrade --reuse-values from an older chart): the operator's default, 0 */}}
+            {{- if hasKey (.Values.nifiPods | default dict) "fsGroup" }}
+            {{- $fsGroup := .Values.nifiPods.fsGroup }}
+            - --nifi-fs-group={{ if or (kindIs "invalid" $fsGroup) (kindIs "string" $fsGroup) }}{{ $fsGroup | default "" }}{{ else }}{{ $fsGroup | int64 }}{{ end }}
+            {{- end }}
+            {{- $nifiPods := .Values.nifiPods | default dict }}
+            {{- /* absent (helm upgrade --reuse-values from an older chart): none when that release set
+                fsGroup "" (a platform that assigns IDs, e.g. OpenShift), else the operator's default, 1000 */}}
+            {{- if hasKey $nifiPods "runAsUser" }}
+            {{- $runAsUser := $nifiPods.runAsUser }}
+            - --nifi-run-as-user={{ if or (kindIs "invalid" $runAsUser) (kindIs "string" $runAsUser) }}{{ $runAsUser | default "" }}{{ else }}{{ $runAsUser | int64 }}{{ end }}
+            {{- else if and (hasKey $nifiPods "fsGroup") (eq (toString (index $nifiPods "fsGroup")) "") }}
+            - --nifi-run-as-user=
+            {{- end }}
+            {{- $seccomp := "RuntimeDefault" }}
+            {{- if hasKey $nifiPods "seccompProfile" }}
+            {{- $seccomp = index $nifiPods "seccompProfile" }}
+            {{- if kindIs "invalid" $seccomp }}{{ $seccomp = "" }}{{ end }}
+            {{- if not (has $seccomp (list "RuntimeDefault" "")) }}{{ fail (printf `nifiPods.seccompProfile must be "RuntimeDefault" or "" (got %v)` $seccomp) }}{{ end }}
+            - --nifi-seccomp-profile={{ $seccomp }}
+            {{- end }}
+            {{- if and (eq (index $nifiPods "openshiftSCC" | default "" | toString) "anyuid") (ne $seccomp "") }}{{ fail `nifiPods.seccompProfile must be "" with the anyuid SCC, which forbids setting a seccomp profile` }}{{ end }}
+            {{- with .Values.nifiNodeImage }}
+            - --default-nifi-image={{ .repository }}:{{ .tag | default "2.12.0" }}
+            {{- end }}
+            {{- /* the operator ignores it on clusters without the SCC API */}}
+            {{- if .Values.nifiPods.openshiftSCC }}
+            - --nifi-scc={{ .Values.nifiPods.openshiftSCC }}
+            {{- end }}
+            {{- if .Values.csiDriver.enabled }}
+            - --csi-driver-service-account={{ .Release.Namespace }}/{{ include "nifi-operator.fullname" . }}-csi-driver
+            {{- end }}
+            {{- if .Values.webhook.enabled }}
+            - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+            {{- with .Values.webhook.trustedImageRepositories }}
+            - --trusted-image-repositories={{ join "," . }}
+            {{- end }}
+            {{- end }}
+          {{- if not .Values.webhook.enabled }}
+          env:
+            - name: ENABLE_WEBHOOKS
+              value: "false"
+          {{- end }}
+          ports:
+            - containerPort: {{ trimPrefix ":" .Values.probes.healthProbeBindAddress }}
+              name: health
+              protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - containerPort: {{ if .Values.metrics.secure }}8443{{ else }}8080{{ end }}
+              name: metrics
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.webhook.enabled }}
+            - containerPort: 9443
+              name: webhook-server
+              protocol: TCP
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.livenessPath }}
+              port: health
+            initialDelaySeconds: {{ .Values.probes.initialDelaySeconds.liveness }}
+            periodSeconds: {{ .Values.probes.periodSeconds.liveness }}
+          {{- with .Values.preStopSleepSeconds }}
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: {{ . }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readinessPath }}
+              port: health
+            initialDelaySeconds: {{ .Values.probes.initialDelaySeconds.readiness }}
+            periodSeconds: {{ .Values.probes.periodSeconds.readiness }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.webhook.enabled }}
+          volumeMounts:
+            - mountPath: /tmp/k8s-webhook-server/serving-certs
+              name: webhook-certs
+              readOnly: true
+          {{- end }}
+      {{- if .Values.webhook.enabled }}
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: {{ include "nifi-operator.fullname" . }}-webhook-server-cert
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.affinity }}
+        {{- toYaml .Values.affinity | nindent 8 }}
+        {{- else }}
+        # Default: prefer one replica per node, so one node going away keeps the other.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "nifi-operator.selectorLabels" . | nindent 20 }}
+        {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- range . }}
+        - {{- toYaml . | nindent 10 }}
+          labelSelector:
+            matchLabels:
+              {{- include "nifi-operator.selectorLabels" $ | nindent 14 }}
+        {{- end }}
+      {{- end }}

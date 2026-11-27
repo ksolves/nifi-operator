@@ -1,0 +1,41 @@
+{{- /* `helm upgrade --reuse-values` from a chart without networkPolicy leaves it unset: off */}}
+{{- $np := .Values.networkPolicy | default dict }}
+{{- if $np.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "nifi-operator.fullname" . }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "nifi-operator.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Liveness and readiness probes. Open to any source: the kubelet connects from the node.
+    - ports:
+        - port: health
+          protocol: TCP
+    {{- if .Values.webhook.enabled }}
+    # Admission webhook, called by the API server. The Service's port 443 targets this one.
+    - ports:
+        - port: webhook-server
+          protocol: TCP
+      {{- with $np.webhookFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.metrics.enabled }}
+    - ports:
+        - port: metrics
+          protocol: TCP
+      {{- with $np.metricsFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+{{- end }}

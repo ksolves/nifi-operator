@@ -1,0 +1,27 @@
+{{- if .Values.csiDriver.enabled }}
+# Registers the TLS CSI node plugin with kubelet. Vanilla upstream storage.k8s.io API; the only
+# platform-specific part is the OpenShift ephemeral-volume profile label, which other
+# distributions ignore - see docs/csi-driver-platform-notes.md.
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: tls.nifi.ksolves.com
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+    {{- with .Values.csiDriver.openshiftEphemeralVolumeProfile }}
+    # OpenShift admits a pod with an inline CSI volume only if its namespace enforces at least
+    # this Pod Security level. Unlabelled drivers count as "privileged", which would limit TLS
+    # NiFi clusters to privileged namespaces.
+    security.openshift.io/csi-ephemeral-volume-profile: {{ . }}
+    {{- end }}
+spec:
+  # No CreateVolume/attach-detach: this driver only supports ephemeral inline volumes, whose
+  # lifecycle is tied 1:1 to their pod's.
+  attachRequired: false
+  # Required so kubelet populates NodePublishVolumeRequest.volume_context with
+  # csi.storage.k8s.io/pod.name/pod.namespace/pod.uid - the driver depends on pod.name to know
+  # which specific pod (and therefore which certificate) it's serving.
+  podInfoOnMount: true
+  volumeLifecycleModes:
+    - Ephemeral
+{{- end }}

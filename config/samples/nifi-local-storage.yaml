@@ -1,0 +1,42 @@
+# A NiFiCluster on node-local volumes (local NVMe / SSD) - see docs/local-storage.md.
+# Prerequisite: a StorageClass for the local disks with volumeBindingMode: WaitForFirstConsumer,
+# here "local-nvme" (e.g. TopoLVM or OpenEBS LVM LocalPV, which can also resize; local-path works
+# for testing but enforces no volume size).
+apiVersion: nifi.ksolves.com/v1alpha1
+kind: NiFiCluster
+metadata:
+  name: nifi-local
+spec:
+  # A scaled-down node's local volume is released, so it doesn't pin a later scale-up to that host.
+  # Deleting the cluster keeps the data (whenDeleted defaults to Retain).
+  persistentVolumeClaimRetentionPolicy:
+    whenScaled: Delete
+  repositories:
+    contentArchive:
+      # Local-path volumes have no size limit: keep the archive from filling the node's disk.
+      maxUsagePercentage: 30
+  nodeGroups:
+    - name: ingest
+      replicas: 3
+      storageClassName: local-nvme
+      storage: 20Gi
+      # The content repository on its own, large volume; the others stay small.
+      splitRepositoryStorage:
+        enabled: true
+        contentRepositoryStorage: 500Gi
+        flowFileRepositoryStorage: 20Gi
+        provenanceRepositoryStorage: 50Gi
+      resources:
+        requests: {cpu: "4", memory: 8Gi}
+        limits: {cpu: "8", memory: 8Gi}
+      podOverrides:
+        # Required, not just preferred: two NiFi nodes on one host would lose both with that host.
+        # Replaces the operator's default (preferred) anti-affinity.
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: nifi-local
+                    nifi.ksolves.com/node-group: ingest

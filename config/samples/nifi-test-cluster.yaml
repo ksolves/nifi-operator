@@ -1,0 +1,25 @@
+apiVersion: nifi.ksolves.com/v1alpha1
+kind: NiFiCluster
+metadata:
+  name: nifi-test
+  namespace: nifi-operator
+  labels:
+    app.kubernetes.io/name: nifi-operator
+    app.kubernetes.io/managed-by: manual-test
+spec:
+  image:
+    repository: apache/nifi
+    tag: 2.12.0
+  nodeGroups:
+    - name: default
+      replicas: 1
+      storage: 5Gi
+      logStorage: 2Gi
+      storageClassName: standard
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi

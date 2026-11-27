@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="02-operator-internals-title 02-operator-internals-desc" id="d-02-operator-internals-root">
+        <title id="02-operator-internals-title">Inside the operator</title>
+        <desc id="02-operator-internals-desc">The nifi-operator's admission webhooks, leader-elected NiFiCluster reconciler, per-cluster TLS CA and CSI driver, and how they connect to the Kubernetes API server, NiFi pods and Prometheus.</desc>
+        <defs>
+      <style>#d-02-operator-internals-root { --color-paper:   #fafaf9;
+      --color-ink:     #212121;
+      --color-muted:   #5c636a;
+      --color-accent:  #c32f3c;
+      --font-sans:     'Manrope', system-ui, sans-serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace; }
+      #d-02-operator-internals-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #d-02-operator-internals-root .diagram-container { width: 100%; overflow-x: auto; }
+      #d-02-operator-internals-root .diagram-container { overflow-x: visible; }</style>
+          <marker id="d-02-operator-internals-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5c636a"/></marker>
+          <marker id="d-02-operator-internals-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#c32f3c"/></marker>
+          <marker id="d-02-operator-internals-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4e49e0"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#fafaf9"/>
+<rect x="336" y="144" width="272" height="400" rx="8" fill="#212121" stroke="rgba(33,33,33,0.14)" stroke-width="0.8" stroke-dasharray="4,4" fill-opacity="0.02"/>
+<rect x="352" y="138" width="112" height="12" rx="2" fill="#fafaf9"/>
+<text x="408" y="147" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">OPERATOR POD × N</text>
+<path d="M 240,212 H 350" fill="none" stroke="#4e49e0" stroke-width="1.2" marker-end="url(#d-02-operator-internals-arrow-link)"/>
+<rect x="266" y="192" width="60" height="12" rx="2" fill="#fafaf9"/>
+<text x="296" y="201" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ADMISSION</text>
+<path d="M 240,344 H 350" fill="none" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-02-operator-internals-arrow)"/>
+<rect x="258" y="324" width="76" height="12" rx="2" fill="#fafaf9"/>
+<text x="296" y="333" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">WATCH EVENTS</text>
+<path d="M 352,492 H 242" fill="none" stroke="#5c636a" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#d-02-operator-internals-arrow)"/>
+<rect x="262" y="472" width="68" height="12" rx="2" fill="#fafaf9"/>
+<text x="296" y="481" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">RENEW LEASE</text>
+<path d="M 472,456 V 394" fill="none" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-02-operator-internals-arrow)"/>
+<rect x="480" y="418" width="68" height="12" rx="2" fill="#fafaf9"/>
+<text x="514" y="427" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">LEADER ONLY</text>
+<path d="M 592,344 H 702" fill="none" stroke="#c32f3c" stroke-width="1.4" marker-end="url(#d-02-operator-internals-arrow-accent)"/>
+<rect x="638" y="324" width="60" height="12" rx="2" fill="#fafaf9"/>
+<text x="668" y="333" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">RECONCILE</text>
+<path d="M 592,320 H 624 Q 632,320 632,312 V 220 Q 632,212 640,212 H 702" fill="none" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-02-operator-internals-arrow)"/>
+<rect x="640" y="260" width="60" height="12" rx="2" fill="#fafaf9"/>
+<text x="670" y="269" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">CREATE CA</text>
+<path d="M 592,368 H 624 Q 632,368 632,376 V 416 Q 632,424 640,424 H 1120 Q 1128,424 1128,416 V 394" fill="none" stroke="#4e49e0" stroke-width="1.2" marker-end="url(#d-02-operator-internals-arrow-link)"/>
+<rect x="840" y="404" width="80" height="12" rx="2" fill="#fafaf9"/>
+<text x="880" y="413" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">POLL REST API</text>
+<path d="M 928,344 H 1014" fill="none" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-02-operator-internals-arrow)"/>
+<rect x="934" y="324" width="76" height="12" rx="2" fill="#fafaf9"/>
+<text x="972" y="333" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">CREATES PODS</text>
+<path d="M 928,212 H 1014" fill="none" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-02-operator-internals-arrow)"/>
+<rect x="940" y="192" width="64" height="12" rx="2" fill="#fafaf9"/>
+<text x="972" y="201" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">CA KEYPAIR</text>
+<path d="M 1128,248 V 294" fill="none" stroke="#5c636a" stroke-width="1.2" marker-end="url(#d-02-operator-internals-arrow)"/>
+<rect x="1136" y="266" width="76" height="12" rx="2" fill="#fafaf9"/>
+<text x="1174" y="275" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">PER-POD CERT</text>
+<path d="M 704,492 H 594" fill="none" stroke="#4e49e0" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#d-02-operator-internals-arrow-link)"/>
+<rect x="634" y="472" width="44" height="12" rx="2" fill="#fafaf9"/>
+<text x="656" y="481" fill="#67707a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SCRAPE</text>
+<rect x="40" y="176" width="200" height="352" rx="6" fill="#fafaf9"/>
+<rect x="40" y="176" width="200" height="352" rx="6" fill="#212121" stroke="rgba(33,33,33,0.30)" stroke-width="1" fill-opacity="0.03"/>
+<rect x="48" y="184" width="28" height="12" rx="2" fill="none" stroke="#5c636a" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="62" y="193" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">K8S</text>
+<text x="140" y="322" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">Kubernetes API server</text>
+<text x="140" y="337" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">CRDs · CEL validation</text>
+<text x="140" y="350" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">NiFiCluster · NiFiNodeGroup</text>
+<text x="140" y="363" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Lease · SubjectAccessReview</text>
+<rect x="352" y="176" width="240" height="72" rx="6" fill="#fafaf9"/>
+<rect x="352" y="176" width="240" height="72" rx="6" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+<rect x="360" y="184" width="40" height="12" rx="2" fill="none" stroke="#5c636a" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="380" y="193" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">HTTPS</text>
+<text x="472" y="216" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">Admission webhooks</text>
+<text x="472" y="231" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">validate + default · SAR</text>
+<text x="472" y="244" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">every replica · trusted repos</text>
+<rect x="352" y="296" width="240" height="96" rx="6" fill="#fafaf9"/>
+<rect x="352" y="296" width="240" height="96" rx="6" fill="#c32f3c" stroke="#c32f3c" stroke-width="1.2" fill-opacity="0.08"/>
+<rect x="360" y="304" width="44" height="12" rx="2" fill="none" stroke="#c32f3c" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="382" y="313" fill="#c32f3c" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">LEADER</text>
+<text x="472" y="338" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">NiFiCluster reconciler</text>
+<text x="472" y="353" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">For NiFiCluster</text>
+<text x="472" y="366" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Watches NodeGroup · Secret · PVC</text>
+<text x="472" y="379" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">pause gate · requeue to poll</text>
+<rect x="352" y="456" width="240" height="72" rx="6" fill="#fafaf9"/>
+<rect x="352" y="456" width="240" height="72" rx="6" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+<rect x="360" y="464" width="28" height="12" rx="2" fill="none" stroke="#5c636a" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="374" y="473" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">MGR</text>
+<text x="472" y="496" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">Controller manager</text>
+<text x="472" y="511" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">leader election via Lease</text>
+<text x="472" y="524" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">:8443 /metrics</text>
+<rect x="704" y="176" width="224" height="72" rx="6" fill="#fafaf9"/>
+<rect x="704" y="176" width="224" height="72" rx="6" fill="#212121" stroke="#5c636a" stroke-width="1" fill-opacity="0.05"/>
+<rect x="712" y="184" width="44" height="12" rx="2" fill="none" stroke="#5c636a" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="734" y="193" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">SECRET</text>
+<text x="816" y="216" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">Cluster TLS CA</text>
+<text x="816" y="231" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Secret · per NiFiCluster</text>
+<text x="816" y="244" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">controlled by the cluster</text>
+<rect x="704" y="296" width="224" height="96" rx="6" fill="#fafaf9"/>
+<rect x="704" y="296" width="224" height="96" rx="6" fill="#212121" stroke="#5c636a" stroke-width="1" fill-opacity="0.05"/>
+<rect x="712" y="304" width="32" height="12" rx="2" fill="none" stroke="#5c636a" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="728" y="313" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">OWNS</text>
+<text x="816" y="338" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">Owned objects</text>
+<text x="816" y="353" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">StatefulSet · Service</text>
+<text x="816" y="366" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ConfigMap · Secret · PDB</text>
+<text x="816" y="379" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ServiceAccount · Role · Binding</text>
+<rect x="1016" y="176" width="224" height="72" rx="6" fill="#fafaf9"/>
+<rect x="1016" y="176" width="224" height="72" rx="6" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+<rect x="1024" y="184" width="24" height="12" rx="2" fill="none" stroke="#5c636a" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="1036" y="193" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">DS</text>
+<text x="1128" y="216" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">TLS CSI driver</text>
+<text x="1128" y="231" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">DaemonSet · every node</text>
+<text x="1128" y="244" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">mints cert at mount</text>
+<rect x="1016" y="296" width="224" height="96" rx="6" fill="#fafaf9"/>
+<rect x="1016" y="296" width="224" height="96" rx="6" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+<rect x="1024" y="304" width="32" height="12" rx="2" fill="none" stroke="#5c636a" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="1040" y="313" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">PODS</text>
+<text x="1128" y="338" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">NiFi pods</text>
+<text x="1128" y="353" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">StatefulSet per node group</text>
+<text x="1128" y="366" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">CSI TLS volume · mTLS</text>
+<text x="1128" y="379" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">NiFi REST API</text>
+<rect x="704" y="456" width="224" height="72" rx="6" fill="#fafaf9"/>
+<rect x="704" y="456" width="224" height="72" rx="6" fill="#212121" stroke="rgba(33,33,33,0.30)" stroke-width="1" fill-opacity="0.03"/>
+<rect x="712" y="464" width="28" height="12" rx="2" fill="none" stroke="#5c636a" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="726" y="473" fill="#5c636a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+<text x="816" y="496" fill="#212121" font-size="12" font-weight="600" font-family="Manrope, system-ui, sans-serif" text-anchor="middle">Prometheus</text>
+<text x="816" y="511" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ServiceMonitor · PrometheusRule</text>
+<text x="816" y="524" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">cert-expiry gauge</text>
+<line x1="40" y1="652" x2="1240" y2="652" stroke="rgba(33,33,33,0.10)" stroke-width="0.8"/>
+<text x="40" y="684" fill="#5c636a" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">LEGEND</text>
+<rect x="120" y="674" width="16" height="12" rx="2" fill="#c32f3c" stroke="#c32f3c" stroke-width="1" fill-opacity="0.08"/>
+<text x="144" y="683" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">Focal · reconciler</text>
+<rect x="268.8" y="674" width="16" height="12" rx="2" fill="#ffffff" stroke="#212121" stroke-width="1"/>
+<text x="292.8" y="683" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">Operator workload</text>
+<rect x="412.0" y="674" width="16" height="12" rx="2" fill="#212121" stroke="#5c636a" stroke-width="1" fill-opacity="0.05"/>
+<text x="436.0" y="683" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">Kubernetes object</text>
+<rect x="555.2" y="674" width="16" height="12" rx="2" fill="#212121" stroke="rgba(33,33,33,0.30)" stroke-width="1" fill-opacity="0.03"/>
+<text x="579.2" y="683" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">External system</text>
+<line x1="687.2" y1="680" x2="703.2" y2="680" stroke="#c32f3c" stroke-width="1.4"/>
+<text x="711.2" y="683" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">Reconcile write</text>
+<line x1="819.2" y1="680" x2="835.2" y2="680" stroke="#4e49e0" stroke-width="1.4"/>
+<text x="843.2" y="683" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">HTTP call</text>
+<line x1="917.6" y1="680" x2="933.6" y2="680" stroke="#5c636a" stroke-width="1.4"/>
+<text x="941.6" y="683" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">Internal</text>
+<line x1="1010.4" y1="680" x2="1026.4" y2="680" stroke="#5c636a" stroke-width="1.4" stroke-dasharray="5,4"/>
+<text x="1034.4" y="683" fill="#5c636a" font-size="9" font-family="'Geist Mono', ui-monospace, monospace">Periodic / pull</text>
+      </svg>

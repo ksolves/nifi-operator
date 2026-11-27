@@ -1,0 +1,68 @@
+{{- if and .Values.webhook.enabled (eq (include "nifi-operator.webhookCertManager" .) "true") }}
+{{- /*
+A CA chain rather than a self-signed serving certificate: the caBundle cert-manager
+injects into the webhook configurations is the CA, which stays the same for its whole life, so
+renewing the short-lived serving certificate never changes what the API server trusts. With a
+self-signed serving certificate every renewal swapped the caBundle, and calls failed until each
+operator pod had reloaded the new certificate.
+*/}}
+{{- $fullname := include "nifi-operator.fullname" . }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-selfsigned-issuer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-webhook-ca
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+spec:
+  isCA: true
+  commonName: {{ $fullname }}-webhook-ca
+  duration: {{ .Values.webhook.certManager.caDuration }}
+  renewBefore: {{ .Values.webhook.certManager.caRenewBefore }}
+  secretName: {{ $fullname }}-webhook-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: Issuer
+    name: {{ $fullname }}-selfsigned-issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-webhook-ca-issuer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ $fullname }}-webhook-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-serving-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ $fullname }}-webhook-service.{{ .Release.Namespace }}.svc
+    - {{ $fullname }}-webhook-service.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+  duration: {{ .Values.webhook.certManager.duration }}
+  renewBefore: {{ .Values.webhook.certManager.renewBefore }}
+  issuerRef:
+    kind: Issuer
+    name: {{ $fullname }}-webhook-ca-issuer
+  secretName: {{ $fullname }}-webhook-server-cert
+{{- end }}

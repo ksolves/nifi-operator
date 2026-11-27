@@ -1,0 +1,134 @@
+{{- if .Values.webhook.enabled }}
+{{- $certManager := eq (include "nifi-operator.webhookCertManager" .) "true" }}
+{{- $caBundle := "" }}
+{{- if not $certManager }}
+{{- /*
+Helm-generated certificates (no cert-manager). Generated here, not in its own file, so the Secret
+and both caBundles share one CA. The CA (10 years) and its key are kept in the Secret; the serving
+certificate lives 1 year and is re-issued from that same CA on any `helm upgrade` within 60 days
+of its expiry, so the caBundle - the CA - does not change and calls keep working throughout
+. A Secret from an older chart (no ca.key) is replaced once.
+*/}}
+{{- $secretName := printf "%s-webhook-server-cert" (include "nifi-operator.fullname" .) }}
+{{- $host := printf "%s-webhook-service.%s.svc" (include "nifi-operator.fullname" .) .Release.Namespace }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName | default dict }}
+{{- $data := get $existing "data" | default dict }}
+{{- $annotations := get (get $existing "metadata" | default dict) "annotations" | default dict }}
+{{- $notAfterKey := "nifi.ksolves.com/serving-cert-not-after" }}
+{{- $notAfter := get $annotations $notAfterKey }}
+{{- $ca := dict }}
+{{- $keepCA := and (get $data "ca.crt") (get $data "ca.key") }}
+{{- if $keepCA }}
+{{- $ca = buildCustomCert (get $data "ca.crt") (get $data "ca.key") }}
+{{- else }}
+{{- $ca = genCA (printf "%s-webhook-ca" (include "nifi-operator.fullname" .)) 3650 }}
+{{- end }}
+{{- $renewBy := now | dateModify "+1440h" | unixEpoch | atoi }}
+{{- $leafValid := and $keepCA (get $data "tls.crt") (get $data "tls.key") $notAfter }}
+{{- if $leafValid }}
+{{- $leafValid = gt (toDate "2006-01-02T15:04:05Z07:00" $notAfter | unixEpoch | atoi) $renewBy }}
+{{- end }}
+{{- $tlsCrt := get $data "tls.crt" }}
+{{- $tlsKey := get $data "tls.key" }}
+{{- if not $leafValid }}
+{{- $cert := genSignedCert $host nil (list $host (printf "%s.%s" $host .Values.clusterDomain)) 365 $ca }}
+{{- $tlsCrt = $cert.Cert | b64enc }}
+{{- $tlsKey = $cert.Key | b64enc }}
+{{- $notAfter = now | dateModify "+8760h" | date "2006-01-02T15:04:05Z07:00" }}
+{{- end }}
+{{- $caBundle = $ca.Cert | b64enc }}
+{{- if $keepCA }}
+{{- $caBundle = get $data "ca.crt" }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nifi-operator.labels" . | nindent 4 }}
+  annotations:
+    {{ $notAfterKey }}: {{ $notAfter | quote }}
+type: kubernetes.io/tls
+data:
+  ca.crt: {{ $caBundle }}
+  ca.key: {{ if $keepCA }}{{ get $data "ca.key" }}{{ else }}{{ $ca.Key | b64enc }}{{ end }}
+  tls.crt: {{ $tlsCrt }}
+  tls.key: {{ $tlsKey }}
+---
+{{- end }}
+{{- range $kind := list "Mutating" "Validating" }}
+{{- $mutating := eq $kind "Mutating" }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: {{ $kind }}WebhookConfiguration
+metadata:
+  name: {{ include "nifi-operator.fullname" $ }}-{{ lower $kind }}-webhook-configuration
+  {{- if $certManager }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ $.Release.Namespace }}/{{ include "nifi-operator.fullname" $ }}-serving-cert
+  {{- end }}
+  labels:
+    {{- include "nifi-operator.labels" $ | nindent 4 }}
+webhooks:
+  {{- range $kindName := list "nificluster" "nifinodegroup" }}
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      {{- with $caBundle }}
+      caBundle: {{ . }}
+      {{- end }}
+      service:
+        name: {{ include "nifi-operator.fullname" $ }}-webhook-service
+        namespace: {{ $.Release.Namespace }}
+        path: {{ if $mutating }}/mutate{{ else }}/validate{{ end }}-nifi-ksolves-com-v1alpha1-{{ $kindName }}
+    # Fail, not Ignore: an invalid or unauthorised spec must never slip through while the operator
+    # restarts. timeoutSeconds keeps a hung call from holding the API request for the default 10s.
+    failurePolicy: Fail
+    timeoutSeconds: {{ $.Values.webhook.timeoutSeconds }}
+    name: {{ if $mutating }}m{{ else }}v{{ end }}{{ $kindName }}-v1alpha1.kb.io
+    rules:
+      - apiGroups:
+          - nifi.ksolves.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - {{ $kindName }}s
+    sideEffects: None
+  {{- end }}
+  {{- if not $mutating }}
+  {{- /*
+  Validating only: a NiFiNodeGroup's /scale subresource (kubectl scale, an HPA/KEDA) never goes
+  through the nifinodegroup webhook above - a subresource write bypasses it entirely - and its own
+  CRD schema only ever sees this one NiFiNodeGroup's own replicas, never its siblings', so neither
+  catches a scale that pushes the whole NiFiCluster's total past the node limit (NIFI-248 B1(b)).
+  */}}
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      {{- with $caBundle }}
+      caBundle: {{ . }}
+      {{- end }}
+      service:
+        name: {{ include "nifi-operator.fullname" $ }}-webhook-service
+        namespace: {{ $.Release.Namespace }}
+        path: /validate-nifi-ksolves-com-v1alpha1-nifinodegroup-scale
+    failurePolicy: Fail
+    timeoutSeconds: {{ $.Values.webhook.timeoutSeconds }}
+    name: vnifinodegroupscale-v1alpha1.kb.io
+    rules:
+      - apiGroups:
+          - nifi.ksolves.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - UPDATE
+        resources:
+          - nifinodegroups/scale
+    sideEffects: None
+  {{- end }}
+---
+{{- end }}
+{{- end }}

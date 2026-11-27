@@ -1,0 +1,18 @@
+# No spec.authentication set at all - the operator generates a default login on its own:
+# username "admin" and a random password, stored in Secret "<cluster>-auth-credentials".
+# Check which Secret a cluster is actually using with:
+#   kubectl get nificluster nifi-auth-default -n nifi-operator -o wide
+# Then decode the generated credentials with:
+#   kubectl get secret nifi-auth-default-auth-credentials -n nifi-operator -o jsonpath='{.data.username}' | base64 -d
+#   kubectl get secret nifi-auth-default-auth-credentials -n nifi-operator -o jsonpath='{.data.password}' | base64 -d
+apiVersion: nifi.ksolves.com/v1alpha1
+kind: NiFiCluster
+metadata:
+  name: nifi-auth-default
+  namespace: nifi-operator
+spec:
+  nodeGroups:
+    - name: default
+      replicas: 1
+      storage: 1Gi
+      logStorage: 1Gi

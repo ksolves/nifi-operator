@@ -1,0 +1,41 @@
+# Copyright 2026 Ksolves India Limited.
+# SPDX-License-Identifier: Apache-2.0
+# Build the csi-driver binary - a separate image from Dockerfile's operator manager binary
+# (cmd/main.go). See internal/csidriver and config/csi for what this runs as and why it's a
+# distinct component, not an extension of the operator.
+FROM golang:1.27.4@sha256:205c7636d74e0ffbe3d007162df7d74f859f5a8c8322dfb9f907977686c126cf AS builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+COPY cmd/csi-driver/ cmd/csi-driver/
+COPY api/ api/
+COPY internal/ internal/
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o csi-driver cmd/csi-driver/main.go
+
+# Not distroless:nonroot: the driver needs to create its Unix socket under the kubelet plugin
+# directory (config/csi/daemonset.yaml's hostPath mount), which - like the rest of the CSI
+# ecosystem's own reference drivers - requires running as root inside its own container, distinct
+# from the operator manager's already-established nonroot pattern.
+FROM gcr.io/distroless/static:latest@sha256:4c2cd1dee442c9a99924a378c7c126fac8fef14771579ef567c3f2bdd7a5122a
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="Ksolves Operator for Apache NiFi - TLS CSI driver" \
+      org.opencontainers.image.description="CSI driver that issues per-pod TLS keystores for the Ksolves Operator for Apache NiFi" \
+      org.opencontainers.image.vendor="Ksolves India Limited" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/ksolves/nifi-operator" \
+      org.opencontainers.image.documentation="https://github.com/ksolves/nifi-operator/tree/main/docs" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
+WORKDIR /
+COPY --from=builder /workspace/csi-driver .
+# Apache-2.0 section 4: the licence and the bundled modules' licences and NOTICEs.
+COPY LICENSE NOTICE THIRD_PARTY_NOTICES.txt /licenses/
+
+ENTRYPOINT ["/csi-driver"]

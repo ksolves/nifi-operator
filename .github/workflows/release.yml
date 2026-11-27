@@ -1,0 +1,197 @@
+name: Release
+
+# Release checks on a version tag. Images are built, scanned and pushed from a workstation with
+# `make release` / `make release-push` (see CONTRIBUTING.md): this job runs inside a Go container with no Docker daemon. This workflow proves the tagged commit is releasable, then creates the GitHub
+# Release with the packaged chart and the source SBOM. It pushes no images.
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  # Keyless cosign signing: this token, not a stored key, is what Fulcio certifies the signature
+  # against.
+  id-token: write
+
+jobs:
+  release-checks:
+    name: Release checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: golang:1.27.4
+    env:
+      # see lint.yml for why: go's VCS-stamping fails inside this container
+      GOFLAGS: -buildvcs=false
+    steps:
+      - name: Check tag is semver
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag '$GITHUB_REF_NAME' is not vX.Y.Z"
+            exit 1
+          fi
+
+      - name: Install make, shellcheck, jq and envsubst
+        run: apt-get update && apt-get install -y make shellcheck jq gettext-base
+
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # The public repo releases from main; the internal repo from dev or opensource. Accept
+      # whichever of those branches this repo has that contains the tagged commit.
+      - name: Check tag is on a release branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          hdr="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          for branch in main dev opensource; do
+            git -c "http.https://github.com/.extraheader=$hdr" fetch --quiet origin \
+              "+refs/heads/$branch:refs/remotes/origin/$branch" 2>/dev/null || continue
+            if git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch"; then
+              echo "tag $GITHUB_REF_NAME is on $branch"
+              exit 0
+            fi
+          done
+          echo "::error::tag $GITHUB_REF_NAME ($GITHUB_SHA) is on none of main/dev/opensource"
+          exit 1
+
+      - name: Tag matches VERSION, chart version and appVersion
+        run: make release-check-version VERSION="${GITHUB_REF_NAME#v}"
+
+      - name: go.mod and go.sum are tidy
+        run: go mod tidy && git diff --exit-code go.mod go.sum
+
+      - name: Build and test
+        run: |
+          go build ./...
+          make test GOTEST_FLAGS=-race
+
+      - name: Lint, vulncheck, chart checks
+        run: make lint lint-scripts vulncheck verify-chart lint-chart
+
+      - name: Package the chart
+        run: make release-chart VERSION="${GITHUB_REF_NAME#v}"
+
+      - name: Source SBOM
+        run: make release-source-sbom VERSION="${GITHUB_REF_NAME#v}"
+
+      # A GitHub release with no signed, provenance-checked images for it to describe is
+      # not releasable, so this runs before the GitHub Release is created, not after.
+      - name: Install crane
+        run: go install github.com/google/go-containerregistry/cmd/crane@v0.22.1
+
+      # crane, not docker/login-action: this container has no docker CLI. cosign reads the same
+      # ~/.docker/config.json to push the signatures.
+      - name: Log in to Docker Hub
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::set the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets"
+            exit 1
+          fi
+          printf '%s' "$DOCKERHUB_TOKEN" | crane auth login index.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+
+      # Resolve each tag to a digest once, check that digest, and sign that digest: a tag
+      # re-pushed between the check and the signing cannot get signed.
+      - name: Verify the published images match this tag's commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/release-digests"
+          for img in $(make -s print-release-images VERSION="${GITHUB_REF_NAME#v}"); do
+            ref="${img%%:*}@$(crane digest "$img")"
+            revision="$(crane config "$ref" | jq -r '.config.Labels["org.opencontainers.image.revision"] // empty')"
+            if [ -z "$revision" ]; then
+              echo "::error::$img has no org.opencontainers.image.revision label - was it pushed by make release-push?"
+              exit 1
+            fi
+            if [ "$revision" != "$GITHUB_SHA" ]; then
+              echo "::error::$img was built from $revision, but tag $GITHUB_REF_NAME points to $GITHUB_SHA - rebuild and re-push from the tagged commit before tagging"
+              exit 1
+            fi
+            echo "$img ($ref): revision $revision matches $GITHUB_REF_NAME"
+            echo "$ref" >> "$RUNNER_TEMP/release-digests"
+          done
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      - name: Sign the release images
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r ref; do
+            cosign sign --yes "$ref"
+          done < "$RUNNER_TEMP/release-digests"
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          tag="$GITHUB_REF_NAME"
+          auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          body="Chart and source SBOM attached by release.yml. Changes: CHANGELOG.md."
+          payload="{\"tag_name\":\"${tag}\",\"name\":\"${tag}\",\"body\":\"${body}\",\"draft\":false,\"prerelease\":false}"
+          resp="$(mktemp)"
+          code="$(curl -sS -o "$resp" -w '%{http_code}' -X POST "${auth[@]}" -d "$payload" "${api}/releases")"
+          case "$code" in
+            201) echo "created release $tag" ;;
+            422) echo "release $tag already exists, reusing it"
+                 curl -fsS "${auth[@]}" -o "$resp" "${api}/releases/tags/${tag}" ;;
+            *)   echo "::error::create release failed: HTTP $code"; cat "$resp"; exit 1 ;;
+          esac
+          # The release id from upload_url (".../releases/<id>/assets{?name,label}"): unambiguous,
+          # unlike the first "id" field, which depends on JSON field order.
+          id="$(grep -o '"upload_url": *"[^"]*/releases/[0-9][0-9]*/assets' "$resp" | head -n 1 | sed 's#.*/releases/\([0-9]*\)/assets#\1#' || true)"
+          if [ -z "$id" ]; then
+            echo "::error::no release id in API response"
+            exit 1
+          fi
+          for f in dist/*.tgz dist/*-source.cdx.json; do
+            if [ ! -f "$f" ]; then
+              echo "::error::missing release file $f"
+              exit 1
+            fi
+            case "$f" in
+              *.tgz) ctype=application/gzip ;;
+              *)     ctype=application/json ;;
+            esac
+            name="$(basename "$f")"
+            echo "uploading $name"
+            out="$(mktemp)"
+            code="$(curl -sS -o "$out" -w '%{http_code}' "${auth[@]}" -H "Content-Type: ${ctype}" --data-binary "@${f}" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${id}/assets?name=${name}")"
+            case "$code" in
+              201) ;;
+              422) echo "::warning::${name} already attached; delete it in the Release to replace" ;;
+              *)   echo "::error::upload of ${name} failed: HTTP $code"; cat "$out"; exit 1 ;;
+            esac
+          done
+
+      - name: Attach the chart and source SBOM
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nifi-operator-chart-${{ github.ref_name }}
+          path: |
+            dist/*.tgz
+            dist/*-source.cdx.json
+          if-no-files-found: error

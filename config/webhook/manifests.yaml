@@ -1,0 +1,116 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-nifi-ksolves-com-v1alpha1-nificluster
+  failurePolicy: Fail
+  name: mnificluster-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - nifi.ksolves.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nificlusters
+  sideEffects: None
+  timeoutSeconds: 5
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-nifi-ksolves-com-v1alpha1-nifinodegroup
+  failurePolicy: Fail
+  name: mnifinodegroup-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - nifi.ksolves.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nifinodegroups
+  sideEffects: None
+  timeoutSeconds: 5
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-nifi-ksolves-com-v1alpha1-nificluster
+  failurePolicy: Fail
+  name: vnificluster-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - nifi.ksolves.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nificlusters
+  sideEffects: None
+  timeoutSeconds: 5
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-nifi-ksolves-com-v1alpha1-nifinodegroup
+  failurePolicy: Fail
+  name: vnifinodegroup-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - nifi.ksolves.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nifinodegroups
+  sideEffects: None
+  timeoutSeconds: 5
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-nifi-ksolves-com-v1alpha1-nifinodegroup-scale
+  failurePolicy: Fail
+  name: vnifinodegroupscale-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - nifi.ksolves.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - UPDATE
+    resources:
+    - nifinodegroups/scale
+  sideEffects: None
+  timeoutSeconds: 5

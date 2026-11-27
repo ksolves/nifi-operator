@@ -1,0 +1,30 @@
+# Keeps Go modules, the digest-pinned base images and SHA-pinned actions from going stale.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: opensource
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    # / holds the manager and CSI driver Dockerfiles; images/nifi the NiFi node image.
+    directories:
+      - /
+      - /images/nifi
+    target-branch: opensource
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /
+    target-branch: opensource
+    schedule:
+      interval: weekly
+    groups:
+      # Kubernetes libraries must move together (client-go/api/apimachinery share a version).
+      kubernetes:
+        patterns:
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+      opentelemetry:
+        patterns:
+          - "go.opentelemetry.io/*"
